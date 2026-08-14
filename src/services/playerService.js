@@ -59,13 +59,11 @@ async function checkLogin(id, serial, ip) {
     );
     const verification = insert.rows[0];
 
-    // avisa o bot (via evento interno) pra mandar a DM — não bloqueia o login
     bus.emit('serial-mismatch', { verification, player });
 
     return { status: 'ok_pending_verification', id: player.id };
   }
 
-  // primeiro login depois de ativar: grava o serial
   if (!player.serial) {
     await pool.query('UPDATE players SET serial = $1 WHERE id = $2', [serial, player.id]);
   }
@@ -75,7 +73,17 @@ async function checkLogin(id, serial, ip) {
 
 async function activatePlayer(id, discordId) {
   const result = await pool.query('SELECT * FROM players WHERE id = $1', [id]);
+
   if (result.rows.length === 0) {
+    // ID não existe ainda: se for acima de 1000, deixa a pessoa criar/registrar
+    // direto pelo Discord, sem precisar que o jogo tenha reservado antes.
+    if (Number(id) > 1000) {
+      const insert = await pool.query(
+        'INSERT INTO players (id, activated, discord_id, activated_at) VALUES ($1, true, $2, now()) RETURNING *',
+        [id, discordId]
+      );
+      return { ok: true, player: insert.rows[0] };
+    }
     return { error: 'not_found' };
   }
 
